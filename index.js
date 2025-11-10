@@ -33,7 +33,7 @@ async function run() {
 
 
     app.get("/featured-properties", async (req, res) => {
-      const cursor = featuredCollection.find();
+      const cursor = featuredCollection.find().sort({price:1}).limit(8);
       const result = await cursor.toArray();
       res.send(result);
     });
