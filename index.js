@@ -30,10 +30,11 @@ async function run() {
 
     const db = client.db("Home_Db");
     const featuredCollection = db.collection("f_properties");
+    const reviewsCollection = db.collection("reviews");
 
 
     app.get("/featured-properties", async (req, res) => {
-      const cursor = featuredCollection.find().sort({price:1}).limit(8);
+      const cursor = featuredCollection.find().sort({price:1});
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -43,6 +44,115 @@ async function run() {
       const result = await featuredCollection.insertOne(newProperty);
       res.send(result);
     });
+
+    app.get("/properties/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const prop = await featuredCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!prop)
+          return res.status(404).send({ message: "Property not found" });
+        res.send(prop);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: "Invalid id or server error" });
+      }
+    });
+
+      app.get("/reviews", async (req, res) => {
+        try {
+          const { propertyId, userId } = req.query;
+          const filter = {};
+          if (propertyId) filter.propertyId = propertyId;
+          if (userId) filter.userId = userId;
+          const cursor = reviewsCollection.find(filter).sort({ date: -1 });
+          const result = await cursor.toArray();
+          res.send(result);
+        } catch (err) {
+          console.error(err);
+          res.status(500).send({ error: "Server error" });
+        }
+      });
+
+
+        app.post("/reviews", async (req, res) => {
+          try {
+            const review = req.body;
+            // add server-side timestamp if not provided
+            review.date = review.date || new Date().toISOString();
+
+            // optional: validate required fields
+            if (!review.propertyId || !review.rating || !review.reviewerName) {
+              return res
+                .status(400)
+                .send({
+                  error: "propertyId, rating and reviewerName required",
+                });
+            }
+
+            const result = await reviewsCollection.insertOne(review);
+            // return the inserted doc (with _id)
+            const inserted = await reviewsCollection.findOne({
+              _id: result.insertedId,
+            });
+            res.send(inserted);
+          } catch (err) {
+            console.error(err);
+            res.status(500).send({ error: "Server error" });
+          }
+        });
+
+        app.get("/reviews/user/:userId", async (req, res) => {
+          try {
+            const { userId } = req.params;
+            const cursor = reviewsCollection
+              .find({ userId })
+              .sort({ date: -1 });
+            const result = await cursor.toArray();
+            res.send(result);
+          } catch (err) {
+            console.error(err);
+            res.status(500).send({ error: "Server error" });
+          }
+        });
+
+
+            app.get("/reviews/with-property", async (req, res) => {
+              // query can pass ?userId=... or ?propertyId=...
+              try {
+                const { userId, propertyId } = req.query;
+                const match = {};
+                if (userId) match.userId = userId;
+                if (propertyId) match.propertyId = propertyId;
+
+                const pipeline = [
+                  { $match: match },
+                  {
+                    $lookup: {
+                      from: "f_properties",
+                      localField: "propertyId",
+                      foreignField: "_id",
+                      as: "propertyDoc",
+                    },
+                  },
+                  {
+                    $addFields: {
+                      property: { $arrayElemAt: ["$propertyDoc", 0] },
+                    },
+                  },
+                  { $project: { propertyDoc: 0 } },
+                  { $sort: { date: -1 } },
+                ];
+
+                const aggCursor = reviewsCollection.aggregate(pipeline);
+                const results = await aggCursor.toArray();
+                res.send(results);
+              } catch (err) {
+                console.error(err);
+                res.status(500).send({ error: "Server error" });
+              }
+            });
 
 
     
