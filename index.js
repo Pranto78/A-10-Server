@@ -52,6 +52,34 @@ async function run() {
       res.send(result);
     })
 
+    app.get("/getMyProperty",async(req,res)=>{
+      const cursor = newProperties.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    app.delete("/properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await newProperties.deleteOne(query);
+
+        if (result.deletedCount > 0) {
+          res.send({
+            success: true,
+            message: "Property deleted successfully!",
+          });
+        } else {
+          res
+            .status(404)
+            .send({ success: false, message: "Property not found!" });
+        }
+      } catch (error) {
+        console.error("Error deleting property:", error);
+        res.status(500).send({ success: false, message: "Server error!" });
+      }
+    });
+
    app.get("/properties/:id", async (req, res) => {
      try {
        const { id } = req.params;
