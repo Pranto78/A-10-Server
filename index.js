@@ -31,6 +31,7 @@ async function run() {
     const db = client.db("Home_Db");
     const featuredCollection = db.collection("f_properties");
     const reviewsCollection = db.collection("reviews");
+    const newProperties = db.collection("newProperties");
 
 
     app.get("/featured-properties", async (req, res) => {
@@ -45,20 +46,35 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/properties/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
-        const prop = await featuredCollection.findOne({
-          _id: new ObjectId(id),
-        });
-        if (!prop)
-          return res.status(404).send({ message: "Property not found" });
-        res.send(prop);
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ error: "Invalid id or server error" });
-      }
-    });
+    app.post("/createProperties",async(req,res)=>{
+      const property = req.body;
+      const result = await newProperties.insertOne(property);
+      res.send(result);
+    })
+
+   app.get("/properties/:id", async (req, res) => {
+     try {
+       const { id } = req.params;
+       let prop;
+
+       // Try ObjectId first, then fall back to string ID
+       try {
+         prop = await featuredCollection.findOne({ _id: new ObjectId(id) });
+       } catch {
+         prop = await featuredCollection.findOne({ _id: id });
+       }
+
+       if (!prop) {
+         return res.status(404).send({ message: "Property not found" });
+       }
+
+       res.send(prop);
+     } catch (err) {
+       console.error(err);
+       res.status(500).send({ error: "Invalid id or server error" });
+     }
+   });
+
 
       app.get("/reviews", async (req, res) => {
         try {
@@ -76,32 +92,32 @@ async function run() {
       });
 
 
-        app.post("/reviews", async (req, res) => {
-          try {
-            const review = req.body;
-            // add server-side timestamp if not provided
-            review.date = review.date || new Date().toISOString();
+       app.post("/reviews", async (req, res) => {
+         try {
+           const review = req.body;
+           review.date = review.date || new Date().toISOString();
 
-            // optional: validate required fields
-            if (!review.propertyId || !review.rating || !review.reviewerName) {
-              return res
-                .status(400)
-                .send({
-                  error: "propertyId, rating and reviewerName required",
-                });
-            }
+           if (!review.propertyId || !review.rating || !review.reviewerName) {
+             return res.status(400).send({
+               error: "propertyId, rating and reviewerName required",
+             });
+           }
 
-            const result = await reviewsCollection.insertOne(review);
-            // return the inserted doc (with _id)
-            const inserted = await reviewsCollection.findOne({
-              _id: result.insertedId,
-            });
-            res.send(inserted);
-          } catch (err) {
-            console.error(err);
-            res.status(500).send({ error: "Server error" });
-          }
-        });
+           // normalize propertyId to ObjectId if valid
+           if (ObjectId.isValid(review.propertyId)) {
+             review.propertyId = new ObjectId(review.propertyId);
+           }
+
+           const result = await reviewsCollection.insertOne(review);
+           const inserted = await reviewsCollection.findOne({
+             _id: result.insertedId,
+           });
+           res.send(inserted);
+         } catch (err) {
+           console.error(err);
+           res.status(500).send({ error: "Server error" });
+         }
+       });
 
         app.get("/reviews/user/:userId", async (req, res) => {
           try {
