@@ -32,6 +32,7 @@ async function run() {
     const featuredCollection = db.collection("f_properties");
     const reviewsCollection = db.collection("reviews");
     const newProperties = db.collection("newProperties");
+    
 
 
     app.get("/featured-properties", async (req, res) => {
@@ -58,39 +59,29 @@ async function run() {
       res.send(result);
     })
 
-    app.delete("/properties/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await newProperties.deleteOne(query);
+   app.delete("/properties/:id", async (req, res) => {
+     try {
+       const id = req.params.id;
+       const query = { _id: new ObjectId(id) };
+       const result = await newProperties.deleteOne(query);
 
-        if (result.deletedCount > 0) {
-          res.send({
-            success: true,
-            message: "Property deleted successfully!",
-          });
-        } else {
-          res
-            .status(404)
-            .send({ success: false, message: "Property not found!" });
-        }
-      } catch (error) {
-        console.error("Error deleting property:", error);
-        res.status(500).send({ success: false, message: "Server error!" });
-      }
-    });
+       // ✅ return deletedCount so frontend can check easily
+       res.send(result);
+     } catch (error) {
+       console.error("Error deleting property:", error);
+       res.status(500).send({ success: false, message: "Server error!" });
+     }
+   });
 
    app.get("/properties/:id", async (req, res) => {
      try {
        const { id } = req.params;
-       let prop;
+       const objectId = ObjectId.isValid(id) ? new ObjectId(id) : id;
 
-       // Try ObjectId first, then fall back to string ID
-       try {
-         prop = await featuredCollection.findOne({ _id: new ObjectId(id) });
-       } catch {
-         prop = await featuredCollection.findOne({ _id: id });
-       }
+       // Try featured first
+       let prop =
+         (await featuredCollection.findOne({ _id: objectId })) ||
+         (await newProperties.findOne({ _id: objectId }));
 
        if (!prop) {
          return res.status(404).send({ message: "Property not found" });
@@ -98,7 +89,7 @@ async function run() {
 
        res.send(prop);
      } catch (err) {
-       console.error(err);
+       console.error("Error fetching property:", err);
        res.status(500).send({ error: "Invalid id or server error" });
      }
    });
@@ -162,41 +153,62 @@ async function run() {
         });
 
 
-            app.get("/reviews/with-property", async (req, res) => {
-              // query can pass ?userId=... or ?propertyId=...
-              try {
-                const { userId, propertyId } = req.query;
-                const match = {};
-                if (userId) match.userId = userId;
-                if (propertyId) match.propertyId = propertyId;
-
-                const pipeline = [
-                  { $match: match },
-                  {
-                    $lookup: {
-                      from: "f_properties",
-                      localField: "propertyId",
-                      foreignField: "_id",
-                      as: "propertyDoc",
-                    },
-                  },
-                  {
-                    $addFields: {
-                      property: { $arrayElemAt: ["$propertyDoc", 0] },
-                    },
-                  },
-                  { $project: { propertyDoc: 0 } },
-                  { $sort: { date: -1 } },
-                ];
-
-                const aggCursor = reviewsCollection.aggregate(pipeline);
-                const results = await aggCursor.toArray();
-                res.send(results);
-              } catch (err) {
-                console.error(err);
-                res.status(500).send({ error: "Server error" });
+          app.get("/reviews/with-property", async (req, res) => {
+            try {
+              const { userId, propertyId } = req.query;
+              const match = {};
+              if (userId) match.userId = userId;
+              if (propertyId) {
+                // normalize to ObjectId if valid
+                match.propertyId = ObjectId.isValid(propertyId)
+                  ? new ObjectId(propertyId)
+                  : propertyId;
               }
-            });
+
+              const pipeline = [
+                { $match: match },
+                // 🔹 lookup from featured properties
+                {
+                  $lookup: {
+                    from: "f_properties",
+                    localField: "propertyId",
+                    foreignField: "_id",
+                    as: "featuredProperty",
+                  },
+                },
+                // 🔹 lookup from user-added properties
+                {
+                  $lookup: {
+                    from: "newProperties",
+                    localField: "propertyId",
+                    foreignField: "_id",
+                    as: "userProperty",
+                  },
+                },
+                // 🔹 merge whichever exists
+                {
+                  $addFields: {
+                    property: {
+                      $cond: [
+                        { $gt: [{ $size: "$featuredProperty" }, 0] },
+                        { $arrayElemAt: ["$featuredProperty", 0] },
+                        { $arrayElemAt: ["$userProperty", 0] },
+                      ],
+                    },
+                  },
+                },
+                { $project: { featuredProperty: 0, userProperty: 0 } },
+                { $sort: { date: -1 } },
+              ];
+
+              const aggCursor = reviewsCollection.aggregate(pipeline);
+              const results = await aggCursor.toArray();
+              res.send(results);
+            } catch (err) {
+              console.error(err);
+              res.status(500).send({ error: "Server error" });
+            }
+          });
 
 
     
