@@ -1,9 +1,8 @@
-// WG3xA7SBuPZFgeY9-> password;
-// Home-Nest-78 -> database name
+
 
 const express = require("express");
 const cors = require("cors");
-// require("dotenv").config();
+require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 4000;
@@ -12,8 +11,8 @@ const port = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-const uri =
-  "mongodb+srv://Home-Nest-78:WG3xA7SBuPZFgeY9@cluster0.fkvjwgn.mongodb.net/?appName=Cluster0";
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.fkvjwgn.mongodb.net/?appName=Cluster0`;
+
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -51,7 +50,7 @@ async function run() {
       try {
         const property = req.body;
 
-        // ✅ Add these automatically
+        
         property.postedBy = property.postedBy || "Unknown User";
         property.postedEmail = property.postedEmail || "No email provided";
         property.postedDate = new Date().toISOString();
@@ -67,7 +66,7 @@ async function run() {
 
    app.get("/all-properties", async (req, res) => {
      try {
-       // Sort by price ascending in MongoDB
+       
        const featured = await featuredCollection
          .find()
          .sort({ price: 1 })
@@ -104,7 +103,6 @@ async function run() {
        const query = { _id: new ObjectId(id) };
        const result = await newProperties.deleteOne(query);
 
-       // ✅ return deletedCount so frontend can check easily
        res.send(result);
      } catch (error) {
        console.error("Error deleting property:", error);
@@ -223,7 +221,6 @@ async function run() {
 
               const pipeline = [
                 { $match: match },
-                // 🔹 lookup from featured properties
                 {
                   $lookup: {
                     from: "f_properties",
@@ -232,7 +229,6 @@ async function run() {
                     as: "featuredProperty",
                   },
                 },
-                // 🔹 lookup from user-added properties
                 {
                   $lookup: {
                     from: "newProperties",
@@ -241,7 +237,6 @@ async function run() {
                     as: "userProperty",
                   },
                 },
-                // 🔹 merge whichever exists
                 {
                   $addFields: {
                     property: {
