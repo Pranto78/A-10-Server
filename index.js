@@ -47,26 +47,53 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/createProperties",async(req,res)=>{
-      const property = req.body;
-      const result = await newProperties.insertOne(property);
-      res.send(result);
-    })
-
-    app.get("/all-properties", async (req, res) => {
+    app.post("/createProperties", async (req, res) => {
       try {
-        const featured = await featuredCollection.find().toArray();
-        const newProps = await newProperties.find().toArray();
-        const allProps = [...featured, ...newProps];
-        res.send(allProps);
-      } catch (error) {
-        console.error("Error fetching all properties:", error);
-        res.status(500).send({ error: "Server error" });
+        const property = req.body;
+
+        // ✅ Add these automatically
+        property.postedBy = property.postedBy || "Unknown User";
+        property.postedEmail = property.postedEmail || "No email provided";
+        property.postedDate = new Date().toISOString();
+
+        const result = await newProperties.insertOne(property);
+        res.send(result);
+      } catch (err) {
+        console.error("Error creating property:", err);
+        res.status(500).send({ error: "Failed to create property" });
       }
     });
 
+
+   app.get("/all-properties", async (req, res) => {
+     try {
+       // Sort by price ascending in MongoDB
+       const featured = await featuredCollection
+         .find()
+         .sort({ price: 1 })
+         .toArray();
+       const newProps = await newProperties.find().sort({ price: 1 }).toArray();
+
+       // Merge both arrays
+       const allProps = [...featured, ...newProps];
+
+       // Finally, sort the merged array by price ascending
+       allProps.sort((a, b) => {
+         const priceA = parseFloat(a.price) || 0;
+         const priceB = parseFloat(b.price) || 0;
+         return priceA - priceB; // smallest to largest
+       });
+
+       res.send(allProps);
+     } catch (error) {
+       console.error("Error fetching all properties:", error);
+       res.status(500).send({ error: "Server error" });
+     }
+   });
+
+
     app.get("/getMyProperty",async(req,res)=>{
-      const cursor = newProperties.find();
+      const cursor = newProperties.find().sort({price:1});
       const result = await cursor.toArray();
       res.send(result);
     })
@@ -84,6 +111,22 @@ async function run() {
        res.status(500).send({ success: false, message: "Server error!" });
      }
    });
+
+   app.put("/properties/:id", async (req, res) => {
+     try {
+       const id = req.params.id;
+       const updatedData = req.body;
+       const result = await newProperties.updateOne(
+         { _id: new ObjectId(id) },
+         { $set: updatedData }
+       );
+       res.send(result);
+     } catch (err) {
+       console.error(err);
+       res.status(500).send({ error: "Update failed" });
+     }
+   });
+
 
    app.get("/properties/:id", async (req, res) => {
      try {
@@ -123,32 +166,33 @@ async function run() {
       });
 
 
-       app.post("/reviews", async (req, res) => {
-         try {
-           const review = req.body;
-           review.date = review.date || new Date().toISOString();
+      app.post("/reviews", async (req, res) => {
+        try {
+          const review = req.body;
+          review.date = review.date || new Date().toISOString();
 
-           if (!review.propertyId || !review.rating || !review.reviewerName) {
-             return res.status(400).send({
-               error: "propertyId, rating and reviewerName required",
-             });
-           }
+          if (!review.propertyId || !review.rating || !review.reviewerName) {
+            return res.status(400).send({
+              error: "propertyId, rating and reviewerName required",
+            });
+          }
 
-           // normalize propertyId to ObjectId if valid
-           if (ObjectId.isValid(review.propertyId)) {
-             review.propertyId = new ObjectId(review.propertyId);
-           }
+          // normalize propertyId to ObjectId if valid
+          if (ObjectId.isValid(review.propertyId)) {
+            review.propertyId = new ObjectId(review.propertyId);
+          }
 
-           const result = await reviewsCollection.insertOne(review);
-           const inserted = await reviewsCollection.findOne({
-             _id: result.insertedId,
-           });
-           res.send(inserted);
-         } catch (err) {
-           console.error(err);
-           res.status(500).send({ error: "Server error" });
-         }
-       });
+          const result = await reviewsCollection.insertOne(review);
+          const inserted = await reviewsCollection.findOne({
+            _id: result.insertedId,
+          });
+          res.send(inserted);
+        } catch (err) {
+          console.error(err);
+          res.status(500).send({ error: "Server error" });
+        }
+      });
+
 
         app.get("/reviews/user/:userId", async (req, res) => {
           try {
