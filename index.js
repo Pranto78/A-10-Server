@@ -53,6 +53,18 @@ async function run() {
       res.send(result);
     })
 
+    app.get("/all-properties", async (req, res) => {
+      try {
+        const featured = await featuredCollection.find().toArray();
+        const newProps = await newProperties.find().toArray();
+        const allProps = [...featured, ...newProps];
+        res.send(allProps);
+      } catch (error) {
+        console.error("Error fetching all properties:", error);
+        res.status(500).send({ error: "Server error" });
+      }
+    });
+
     app.get("/getMyProperty",async(req,res)=>{
       const cursor = newProperties.find();
       const result = await cursor.toArray();
@@ -221,12 +233,6 @@ async function run() {
     // await client.close();
   }
 }
-
-
-
-
-
-
 run().catch(console.dir);
 
 app.listen(port, () => {
